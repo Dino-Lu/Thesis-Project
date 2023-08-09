@@ -1,0 +1,1081 @@
+---
+title: "Overtime & Fertility Intentions"
+author: "Jinxuan Lu"
+date: "08/01/2023"
+output:
+  html_document: 
+    df_print: paged
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+#import data and loading packages
+
+```{r}
+Sys.setenv(LANG="en")
+getwd()
+setwd("/Users/dinolu/Desktop/thesis_project")
+library(tidyverse)
+library(haven)
+library(dplyr)
+library(psych)
+library(knitr)
+library(readxl)
+library(lavaan)
+library(semPlot)
+library(car)
+
+
+#import data
+my_data <- read_excel("/Users/dinolu/Desktop/thesis_project/final_clean.xlsx")
+write_sav(my_data, "mydata.sav")
+
+
+#look at the data
+View(my_data)
+
+```
+
+
+#mutate and select variables that fit for my research
+
+```{r}
+#Mutate and select variables
+df_sample <- my_data %>%
+  mutate(OT_status = as_factor(OT_status),
+         mani_check1_1 = as.numeric(Q1_1...2),
+         mani_check1_2 = as.numeric(Q1_2...3),
+         mani_check2_1 = as.numeric(Q1_1...4),
+         mani_check2_2 = as.numeric(Q1_2...5),
+         mani_check3_1 = as.numeric(Q1_1...6),
+         mani_check3_2 = as.numeric(Q1_2...7),
+         AT_item1 = as.numeric(Q2_1),
+         AT_item2 = as.numeric(Q2_2),
+         AT_item3 = as.numeric(Q2_3),
+         AT_item4 = as.numeric(Q2_4),
+         AT_item5 = as.numeric(Q2_5),
+         SN_item1 = as.numeric(Q3),
+         SN_item2 = as.numeric(Q4_1),
+         SN_item3 = as.numeric(Q4_2),
+         SN_item4 = as.numeric(Q4_3),
+         SN_item5 = as.numeric(Q4_4),
+         PBC_item1 = as.numeric(Q5_1),
+         PBC_item2 = as.numeric(Q5_2),
+         PBC_item3 = as.numeric(Q5_3),
+         INT = as.numeric(Q6),
+         age = as_factor(Q7),
+         edu = as_factor(Q8),
+         part = as_factor(Q9),
+         parity = as_factor(Q10),
+         emp = as_factor(Q11),
+         hlc = as_factor(Q12),
+         inc = as_factor(Q13)) %>%
+  mutate(mani_check1 = coalesce(mani_check1_1, mani_check2_1, mani_check3_1),
+         mani_check1_1 = NULL,
+         mani_check2_1 = NULL,
+         mani_check3_1 = NULL,
+         mani_check2 = coalesce(mani_check1_2, mani_check2_2, mani_check3_2),
+         mani_check1_2 = NULL,
+         mani_check2_2 = NULL,
+         mani_check3_2 = NULL) %>%
+  dplyr::select(OT_status,
+         mani_check1,
+         mani_check2,
+         INT,
+         AT_item1,
+         AT_item2,
+         AT_item3,
+         AT_item4,
+         AT_item5,
+         SN_item1,
+         SN_item2,
+         SN_item3,
+         SN_item4,
+         SN_item5,
+         PBC_item1,
+         PBC_item2,
+         PBC_item3,
+         age,
+         edu,
+         part,
+         parity,
+         emp,
+         hlc,
+         inc)
+
+view(df_sample)
+str(df_sample)
+
+#remove missing values
+df_sample <- drop_na(df_sample)
+
+```
+
+
+#deal with categorical control variables in advance
+```{r}
+
+# Reduce the number of categories in a factor
+df_sample <- df_sample %>%
+  mutate(OT_status = fct_collapse(OT_status,
+                                  toxic_ot = c("场景块1"),
+                                  moderate_ot = c("场景块2"),
+                                  no_ot = c("场景块3")),
+         age = fct_collapse(age,
+                             "1" = c("20-25"),
+                             "2" = c("26-30"),
+                             "3" = c("31-35", "36-40")),
+         edu = fct_collapse(edu,
+                              "1" = c("专科及以下"),
+                              "2" = c("本科"),
+                              "3" = c("硕士","博士")),
+         part = fct_collapse(part,
+                                "0" = c("无伴侣", "有伴侣未同居"),
+                                "1" = c("与伴侣同居")),
+         parity = fct_collapse(parity,
+                               "0" = c("未生育"),
+                               "1" = c("1个孩子", "2个或以上")),
+         emp = fct_collapse(emp,
+                              "0" = c("私营企业或外资企业", "自由职业或创业", "临时工或短期工"),
+                              "1" = c("国营企业或公务员")),
+         hlc = fct_collapse(hlc,
+                              "0" = c("基本健康，有一些小毛病或症状", "有中等程度的健康问题，需要定期医疗保健", "有严重的健康问题，需要持续医疗保健和关注"),
+                              "1" = c("非常健康")),
+         inc = fct_collapse(inc,
+                              "0" = c("少于4.7万人民币", "4.7至7万之间"),
+                              "1" = c("7至12万之间", "12万以上")))
+            
+
+str(df_sample)
+view(df_sample)
+
+```
+
+
+
+```{r}
+# Re-level to set reference category
+df_sample <- df_sample %>% 
+  mutate(OT_status = fct_relevel(OT_status, "no_ot"),
+         age = fct_relevel(age, "3"),
+         edu = fct_relevel(edu, "1"),
+         part = fct_relevel(part, "0"),
+         parity = fct_relevel(parity, "1"),
+         emp = fct_relevel(emp, "1"),
+         hlc = fct_relevel(hlc, "0"),
+         inc = fct_relevel(inc, "0"))
+
+str(df_sample)
+
+#set dummy variables for those that have more than two levels
+df_sample <- df_sample %>%
+  mutate(toxic_ot_dummy = ifelse(OT_status == "toxic_ot", 1, 0),
+         moderate_ot_dummy = ifelse(OT_status == "moderate_ot", 1, 0)) %>%
+  mutate(age1 = ifelse(age == "1", 1, 0),
+         age2 = ifelse(age == "2", 1, 0)) %>%
+  mutate(edu1 = ifelse(edu == "1", 1, 0),
+         edu2 = ifelse(edu == "2", 1, 0))
+
+view(df_sample)
+str(df_sample)
+
+
+#df_sample2 <- df_sample2 %>%
+#  mutate(OT_number = recode_factor(OT_status, "no_ot" = 1, "normal_ot" = 2, "toxic_ot" = 3)) %>%
+#  mutate(OT_number = as.numeric(OT_number))
+
+#view(df_sample2)
+
+```
+
+
+# check index in advance
+
+```{r}
+library(psych)
+describe(df_sample)
+
+
+# reliability analysis of index
+#index1 0.72, ok
+test_index1 <- data.frame(df_sample$AT_item1,
+                          df_sample$AT_item2,
+                          df_sample$AT_item3,
+                          df_sample$AT_item4,
+                          df_sample$AT_item5)
+
+alphaindex1 <- alpha(test_index1)
+
+summary(alphaindex1)
+
+test_index2 <- data.frame(df_sample$SN_item1,
+                          df_sample$SN_item2,
+                          df_sample$SN_item3,
+                          df_sample$SN_item4,
+                          df_sample$SN_item5)
+
+alphaindex2 <- alpha(test_index2)
+
+summary(alphaindex2)
+
+test_index3 <- data.frame(df_sample$PBC_item1,
+                          df_sample$PBC_item2,
+                          df_sample$PBC_item3)
+
+alphaindex3 <- alpha(test_index3)
+
+summary(alphaindex3)
+
+#df_sample$mani_check2 <- 6 - df_sample$mani_check2
+test_index4 <- data.frame(df_sample$mani_check1,
+                          df_sample$mani_check2)
+
+alphaindex4 <- alpha(test_index4)
+
+summary(alphaindex4)
+
+```
+
+
+
+#===================================================================================#
+##### Preliminary analysis #####
+
+
+### checking effect of independent variables on manipulation questions using MANOVA
+```{r}
+library(ggpubr)
+library(rstatix)
+library(broom)
+library(heplots)
+library(effectsize)
+
+#summary statistics
+df_sample_mani <- df_sample %>%
+  select(OT_status, mani_check1, mani_check2)
+view(df_sample_mani)
+
+df_sample_mani %>%
+  group_by(OT_status) %>%
+  summarize(N = n())
+
+df_sample_mani %>%
+  group_by(OT_status) %>%
+  get_summary_stats(mani_check1, mani_check2, type = "mean_sd")
+
+#Assumptions and preleminary tests
+
+#identify multicollinearity
+df_sample_mani %>% cor_test(mani_check1, mani_check2)
+# there was no multicollinearity, as assessed by Pearson correlation (r = - 0.84, p < 0.0001)
+
+#check homogeneity of variance-covariance matrices
+box_m(df_sample_mani[, c("mani_check1", "mani_check2")], df_sample_mani$OT_status)
+#The test is not statistically significant (p > 0.001), so the data does not violate the assumption of homogeneity of variance-covariance matrices
+
+# The Box’s M Test can be used to check the equality of covariance between the groups. This is the equivalent of a multivariate homogeneity of variance. This test is considered as highly sensitive. Therefore, significance for this test is determined at alpha = 0.001.
+
+
+#MANOVA test
+fit_mani <- lm(cbind(mani_check1, mani_check2) ~ OT_status, df_sample_mani)
+Manova(fit_mani, test.statistic = "Pillai")
+# There was a statistically significant difference between the overtime status vignettes on the combined manipulation check variables (mani_check1 and mani_check2), F(4, 594) = 164, p < 0.0001.
+
+Manova(fit_mani, test.statistic = "Wilks") # Wilks λ = 0.06
+# There was a statistically significant difference between the perceived overtime status on the combined manipulation checks (mani_check1 and mani_check2), F(4, 592) = 441.35, p<0.0001
+#Wilks' Lambda was used at the end instead of Pillai because I had a statistically unsignificant Box's M result
+
+# Post-hoc tests (to identify the specific dependent variabels that contributed to the significant global effect)
+grouped.data <- df_sample_mani %>%
+  gather(key = "variable", value = "value", mani_check1, mani_check2) %>%
+  group_by(variable)
+
+grouped.data %>% welch_anova_test(value ~ OT_status) # There was a statistically significant difference in mani_check1 (F(2,192) = 1416, p < 0.0001) and mani_check2 (F(2,192) = 618, p < 0.0001) between overtime status
+#grouped.data %>% kruskal_test(value ~ OT_status)
+#grouped.data %>% anova_test(value ~ OT_status)
+
+
+#multiple pairwise comparisons (tukey_hsd can be used if the homogeneity of variance assumption is met)
+pwc <- df_sample_mani %>%
+  gather(key = "variables", value = "value", mani_check1, mani_check2) %>%
+  group_by(variables) %>%
+  tukey_hsd(value ~ OT_status) %>%
+  select(-estimate, -conf.low, -conf.high)
+pwc
+# all pairwise comparisons were significant for each of the outcome variable (mani_check1 and mani_check2).
+
+#Report: visualization: box plots with p-values
+pwc <- pwc %>% add_xy_position(x = "OT_status")
+test.label <- create_test_label(
+  description = "MANOVA", statistic.text = quote(italic("F")),
+  statistic = 441.35, p= "<0.0001", parameter = "4,592",
+  type = "expression", detailed = TRUE
+)
+ggboxplot(
+  df_sample_mani, x = "OT_status", y = c("mani_check1", "mani_check2"),
+  merge = TRUE, palette = "jco"
+) + 
+  stat_pvalue_manual(
+    pwc, hide.ns = TRUE, tip.length = 0,
+    step.increase = 0.1, step.group.by = "variables",
+    color = "variables"
+  ) + 
+  labs(subtitle = test.label,
+       caption = get_pwc_label(pwc, type = "expression"))
+
+
+# compute effect size
+library(heplots)
+etasq(fit_mani, test = "Pillai") # η² = 0.52 partial eta-squared can be used as a measure of effect size for MANOVA
+etasq(fit_mani, test = "Wilks") # η² = 0.75 #If the value is 0.14 or greater, we can say the effect size is large
+
+#effect size seperately
+library(effectsize)
+eta_squared(fit_mani)
+
+
+# Wilks' Lambda
+summary(fit_mani, test = "Wilks")
+
+
+```
+
+
+
+### Exploratory factor analysis (EFA) to make sure the observed items are representative for the three latent constructs
+```{r}
+library(GGally) # for ggcorr
+library(corrr) # network_plot
+library(ggcorrplot) # for ggcorrplot
+library(FactoMineR) # multiple PCA functions
+library(factoextra) # visualisation functions for PCA (e.g. fviz_pca_var) 
+library(paran) # for paran
+
+library(psych) # for the mixedCor, cortest.bartlett, KMO, fa functions
+library(tidyverse)
+library(dplyr)
+library(car) # for vif & MANOVA test
+library(GPArotation) # for the psych fa function to have the required rotation functional 
+
+library(MVN) # for mvn function
+library(ICS) # for multivariate skew and kurtosis test library(tidyverse) # for tidy code
+library(mice) #for Multivariate Imputation via chained equations
+library(apaTables)
+
+#custom function
+fviz_loadnings_with_cor <- function(mod, axes = 1, loadings_above = 0.4){	
+  require(factoextra)	
+  require(dplyr)	
+  require(ggplot2)	
+	
+	
+	
+if(!is.na(as.character(mod$call$call)[1])){	
+  if(as.character(mod$call$call)[1] == "PCA"){	
+  contrib_and_cov = as.data.frame(rbind(mod[["var"]][["contrib"]], mod[["var"]][["cor"]]))	
+	
+vars = rownames(mod[["var"]][["contrib"]])	
+attribute_type = rep(c("contribution","correlation"), each = length(vars))	
+contrib_and_cov = cbind(contrib_and_cov, attribute_type)	
+contrib_and_cov	
+	
+plot_data = cbind(as.data.frame(cbind(contrib_and_cov[contrib_and_cov[,"attribute_type"] == "contribution",axes], contrib_and_cov[contrib_and_cov[,"attribute_type"] == "correlation",axes])), vars)	
+names(plot_data) = c("contribution", "correlation", "vars")	
+	
+plot_data = plot_data %>% 	
+  mutate(correlation = round(correlation, 2))	
+	
+plot = plot_data %>% 	
+  ggplot() +	
+  aes(x = reorder(vars, contribution), y = contribution, gradient = correlation, label = correlation)+	
+  geom_col(aes(fill = correlation)) +	
+  geom_hline(yintercept = mean(plot_data$contribution), col = "red", lty = "dashed") + scale_fill_gradient2() +	
+  xlab("variable") +	
+  coord_flip() +	
+  geom_label(color = "black", fontface = "bold", position = position_dodge(0.5))	
+	
+	
+}	
+} else if(!is.na(as.character(mod$Call)[1])){	
+  	
+  if(as.character(mod$Call)[1] == "fa"){	
+    loadings_table = mod$loadings %>% 	
+      matrix(ncol = ncol(mod$loadings)) %>% 	
+      as_tibble() %>% 	
+      mutate(variable = mod$loadings %>% rownames()) %>% 	
+      gather(factor, loading, -variable) %>% 	
+      mutate(sign = if_else(loading >= 0, "positive", "negative"))	
+  	
+  if(!is.null(loadings_above)){	
+    loadings_table[abs(loadings_table[,"loading"]) < loadings_above,"loading"] = NA	
+    loadings_table = loadings_table[!is.na(loadings_table[,"loading"]),]	
+  }	
+  	
+  if(!is.null(axes)){	
+  	
+  loadings_table = loadings_table %>% 	
+     filter(factor == paste0("V",axes))	
+  }	
+  	
+  	
+  plot = loadings_table %>% 	
+      ggplot() +	
+      aes(y = loading %>% abs(), x = reorder(variable, abs(loading)), fill = loading, label =       round(loading, 2)) +	
+      geom_col(position = "dodge") +	
+      scale_fill_gradient2() +	
+      coord_flip() +	
+      geom_label(color = "black", fill = "white", fontface = "bold", position = position_dodge(0.5)) +	
+      facet_wrap(~factor) +	
+      labs(y = "Loading strength", x = "Variable")	
+  }	
+}	
+	
+
+return(plot)	
+	
+}	
+
+```
+
+
+```{r}
+df_sample_efa <- df_sample %>%
+  dplyr::select(AT_item1,
+         AT_item2,
+         AT_item3,
+         AT_item4,
+         AT_item5,
+         SN_item1,
+         SN_item2,
+         SN_item3,
+         SN_item4,
+         SN_item5,
+         PBC_item1,
+         PBC_item2,
+         PBC_item3)
+view(df_sample_efa)
+
+#run a correlation matrix of all items (Pearson Correlation)
+df_correl = df_sample_efa %>% 	
+  cor(use = "pairwise")	
+str(df_correl)   
+lowerMat(df_correl)
+lowerCor(df_sample_efa)
+
+#table including means, standard deviation, and correlation among 13 items
+apa.cor.table(df_sample_efa,
+              show.conf.interval = TRUE,
+              show.sig.stars = TRUE,
+              landscape = TRUE)
+
+#test correlations' significance -- p values and confidence intervals
+corr.test(df_sample_efa, use = "pairwise.complete.obs")$p
+corr.test(df_sample_efa, use = "pairwise.complete.obs")$ci
+
+# Graphical representation of error
+error.dots(df_sample_efa)
+error.bars(df_sample_efa)
+
+#Checking multivariate outliers in correlation 
+outLiers <- psych::outlier(df_sample_efa)
+outLiers
+
+alph_crit <- .001
+n_nu <- ncol(df_sample_efa)
+crit_val <- (qchisq(p = 1-(alph_crit), df = n_nu))
+crit_val
+
+outers <- data.frame(outLiers) %>%
+            filter(outLiers > crit_val) %>%
+            arrange(desc(outLiers))
+outers    
+# no outliers
+
+#visualizing the correlation structure
+ggcorr(df_correl)
+	
+ggcorrplot(cor(df_sample_efa), p.mat = cor_pmat(df_sample_efa), hc.order=TRUE, type='lower')
+
+cor(df_sample_efa) %>% network_plot(min_cor=0.6)
+```
+
+#checking assumption of reliability & factorability for EFA
+```{r}
+#Reliability check: alpha() -- Cronbach's alpha, it is a measure of the internal consistency of my measure, usually > .8
+alpha(df_sample_efa, check.keys = TRUE)  #alpha = 0.93, good reliability
+
+#Factorability check
+##Barlett sphericity test
+bfi_factorability_df <- cortest.bartlett(df_correl)	
+bfi_factorability_df	  #p value <0.05, the bfi assumption is rejected, so the original variables correlate with each other, EFA can be conducted
+
+
+##Kaiser-Meyer-Olkin (KMO) test
+KMO(df_correl)	
+# the KMO is higher than 0.6 (0.93) in all cases, and the total KMO is also higher than 0.6**, so the data seems to be factorable.	
+
+det(df_correl)  #a positive determinant, which means the factor analysis will probably run
+
+```
+
+
+#Factor extraction (using function **fa()**)
+```{r}
+#determine whether the data shows a multivariate normal distribution. 
+result <- mvn(df_sample_efa, mvnTest = "hz")	
+result$multivariateNormality	  #p-value = 0
+
+mvnorm.kur.test(na.omit(df_sample_efa))	 #p-value < 0.05
+mvnorm.skew.test(na.omit(df_sample_efa))	 #p-value < 0.05
+#the p-values of the Henze-Zirkler test & the multivariate skewedness and kurtosis tests are all lower than 0.05, indicating violation of the multivariate normality assumption.	
+
+
+#determining how many factors to retain
+
+#use parallel analysis for estimation
+fa.parallel(df_correl, n.obs = nrow(df_sample_efa), fa = "both", n.iter = 100, fm = "pa")  
+#parallel analysis suggests that the number of factors = 3 and the number of components = 2
+
+#The Very Simple Structure (VSS) criterion and Wayne Velicer's Minimum Average Partial (MAP) criterion
+nfactors(df_correl, n.obs = nrow(df_sample_efa))	  #VSS and MAP both suggest 2 factors
+
+
+# - Scree test: 2
+# - Parallel analysis: 3
+# - VSS: 2	
+# - MAP: 2	
+
+```
+
+#The 3-factor structure analysis:
+```{r}
+#Factor extraction without rotation
+efa <- fa(df_sample_efa, nfactors = 3, rotate = "none", fm = "pa")
+efa 
+
+# Sorted communality 
+efa_common <- as.data.frame(sort(efa$communality, decreasing = TRUE))	
+efa_common 	# AT_item1 is the best represented item in the 3-factor structure, with 80.66% of its total variance explained by the new factors.
+
+mean(efa$communality)	   #0.67
+
+```
+
+
+#rotation 
+#oblimin or promax (I do an oblique rotation because orthogonal rotation (varimax) assumes no correlations between factors, which is not the case of this study); besides, promax requires large data set usually < 150, so I turn to oblimin rotation
+```{r}
+#Factor extraction with rotation 
+efa_oblimin <- fa(df_sample_efa, nfactors = 3, rotate = "oblimin", fm = "pa")
+efa_oblimin   # 3 factor structure explained 34% variance of 13 items
+#the lowest correlation between factors is 0.41, which exceeds the Tabachnick and Fiddell threshold of .32
+
+
+# Sorted communality 
+efa_oblimin_common <- as.data.frame(sort(efa_oblimin$communality, decreasing = TRUE))	
+efa_oblimin_common 	# 80.66%	
+
+mean(efa_oblimin$communality)	   #0.67
+
+efa_oblimin_common_uniq <- as.data.frame(sort(efa_oblimin$uniquenesses, decreasing = TRUE))
+efa_oblimin_common_uniq  #the part that cannot be explained by factors
+
+efa_oblimin$loadings
+print(efa_oblimin$loadings, cutoff = 0.45)
+# When the items have different frequency distributions Tabachnick and Fidell (2007) follow Comrey and Lee (1992) in suggesting using more stringent cut-offs going from 0.32 (poor), 0.45 (fair), 0.55 (good), 0.63 (very good) or 0.71 (excellent).
+
+```
+
+
+
+#visualization
+```{r}
+#visualize the rotation result
+factor.plot(efa_oblimin)
+
+fa.diagram(efa_oblimin, digits = 2)	
+fa.diagram(efa_oblimin$loadings, simple = FALSE, digits = 2)
+	
+fviz_loadnings_with_cor(efa_oblimin, axes = 1, loadings_above = 0.45)	
+	
+fviz_loadnings_with_cor(efa_oblimin, axes = 2, loadings_above = 0.45)	
+
+fviz_loadnings_with_cor(efa_oblimin, axes = 3, loadings_above = 0.45)
+
+```
+
+#getting final EFA results as a table
+```{r}
+library(gt)
+
+fa_table <- function(x, varlabels = NULL, title = "Factor analysis results", diffuse = .10, small = .35, cross = .20, sort = TRUE) {
+  #get sorted loadings
+  require(dplyr)
+  require(purrr)
+  require(tibble)
+  require(gt)
+  if(sort == TRUE) {
+    x <- psych::fa.sort(x)
+  }
+  if(!is.null(varlabels)) {
+    if(length(varlabels) != nrow(x$loadings)) { warning("Number of variable labels and number of variables are unequal. Check your input!",
+                                                        call. = FALSE) }
+    if(sort == TRUE) {
+      varlabels <- varlabels[x$order]
+      }
+  }
+  if(is.null(varlabels)) {varlabels <- rownames(x$loadings)}
+
+  loadings <- data.frame(unclass(x$loadings))
+  
+  #make nice names
+  factornamer <- function(nfactors) {
+    paste0("Factor_", 1:nfactors)}
+  
+  nfactors <- ncol(loadings)
+  fnames <- factornamer(nfactors)
+  names(loadings) <- fnames
+  
+  # prepare locations
+  factorindex <- apply(loadings, 1, function(x) which.max(abs(x)))
+  
+  # adapted from sjplot: getremovableitems
+  getRemovableItems <- function(dataframe, fctr.load.tlrn = diffuse) {
+    # clear vector
+    removers <- vector(length = nrow(dataframe))
+    # iterate each row of the data frame. each row represents
+    # one item with its factor loadings
+    for (i in seq_along(removers)) {
+      # get factor loadings for each item
+      rowval <- as.numeric(abs(dataframe[i, ]))
+      # retrieve highest loading
+      maxload <- max(rowval)
+      # retrieve 2. highest loading
+      max2load <- sort(rowval, TRUE)[2]
+      # check difference between both
+      if (abs(maxload - max2load) < fctr.load.tlrn) {
+        # if difference is below the tolerance,
+        # remeber row-ID so we can remove that items
+        # for further PCA with updated data frame
+        removers[i] <- TRUE
+      }
+    }
+    # return a vector with index numbers indicating which items
+    # have unclear loadings
+    return(removers)
+  }
+ if(nfactors > 1) {
+   removable <- getRemovableItems(loadings)
+   cross_loadings <- purrr::map2(fnames, seq_along(fnames), function(f, i) {
+     (abs(loadings[,f] > cross)) & (factorindex != i) 
+   })
+ }
+
+  small_loadings <- purrr::map(fnames, function(f) {
+    abs(loadings[,f]) < small
+  })
+  
+  ind_table <- dplyr::tibble(varlabels, loadings) %>%
+    dplyr::rename(Indicator = varlabels) %>% 
+    dplyr::mutate(Communality = x$communality, Uniqueness = x$uniquenesses, Complexity = x$complexity) %>% 
+    dplyr::mutate(across(starts_with("Factor"), round, 3))  %>%
+    dplyr::mutate(across(c(Communality, Uniqueness, Complexity), round, 2))
+                    
+  
+  ind_table <- ind_table %>% gt(rowname_col = "Indicator") %>% tab_header(title = title)
+  # mark small loadiongs
+  for(f in seq_along(fnames)) {
+    ind_table <- ind_table %>%  tab_style(style = cell_text(color = "#D3D3D3", style = "italic"),
+                             locations = cells_body(columns = fnames[f], rows = small_loadings[[f]]))
+  }
+  # mark cross loadings
+  
+  if (nfactors > 1) {
+    for (f in seq_along(fnames)) {
+      ind_table <-
+        ind_table %>%  tab_style(
+          style = cell_text(style = "italic"),
+          locations = cells_body(columns = fnames[f], rows = cross_loadings[[f]])
+        )
+    }
+    # mark non-assignable indicators
+    ind_table <-
+      ind_table %>%  tab_style(style = cell_fill(color = "#D93B3B"),
+                               locations = cells_body(rows = removable))
+  }
+  
+  # adapted from https://www.anthonyschmidt.co/post/2020-09-27-efa-tables-in-r/
+  Vaccounted <- x[["Vaccounted"]]
+  colnames(Vaccounted) <- fnames 
+  if (nfactors > 1) {
+  Phi <- x[["Phi"]]
+  rownames(Phi) <- fnames
+  colnames(Phi) <- fnames
+  f_table <- rbind(Vaccounted, Phi) %>%
+    as.data.frame() %>% 
+    rownames_to_column("Property") %>%
+    mutate(across(where(is.numeric), round, 3)) %>%
+    gt() %>% tab_header(title = "Eigenvalues, Variance Explained, and Factor Correlations for Rotated Factor Solution")
+  }
+  else if(nfactors == 1) {
+    f_table <- rbind(Vaccounted) %>%
+      as.data.frame() %>% 
+      rownames_to_column("Property") %>%
+      mutate(across(where(is.numeric), round, 3)) %>%
+      gt() %>% tab_header(title = "Eigenvalues, Variance Explained, and Factor Correlations for Rotated Factor Solution")
+  }
+
+  return(list("ind_table" = ind_table, "f_table" = f_table))
+  
+}
+
+tables <- fa_table(efa_oblimin)
+tables$ind_table
+tables$f_table
+
+```
+
+#check EFA results after excluding SN_item4
+```{r}
+df_sample_efa_rm <- df_sample %>%
+  dplyr::select(AT_item1,
+         AT_item2,
+         AT_item3,
+         AT_item4,
+         AT_item5,
+         SN_item1,
+         SN_item2,
+         SN_item3,
+         SN_item5,
+         PBC_item1,
+         PBC_item2,
+         PBC_item3)
+
+#run a correlation matrix of all items (Pearson Correlation)
+df_correl_rm = df_sample_efa_rm %>% 	
+  cor(use = "pairwise")	
+
+#Reliability check: alpha() -- Cronbach's alpha, it is a measure of the internal consistency of my measure, usually > .8
+alpha(df_sample_efa_rm, check.keys = TRUE)  #alpha = 0.93, good reliability
+
+#Factorability check
+##Barlett sphericity test
+bfi_factorability_df <- cortest.bartlett(df_correl_rm)	
+bfi_factorability_df	  #p value <0.05, the bfi assumption is rejected, so the original variables correlate with each other, EFA can be conducted
+
+##Kaiser-Meyer-Olkin (KMO) test
+KMO(df_correl_rm)	
+# the KMO is higher than 0.6 (0.92) in all cases, and the total KMO is also higher than 0.6**, so the data seems to be factorable.	
+
+det(df_correl_rm)  #a positive determinant, which means the factor analysis will probably run
+
+#determine whether the data show a multivariate normal distribution. 
+result <- mvn(df_sample_efa_rm, mvnTest = "hz")	
+result$multivariateNormality	  #p-value = 0
+
+mvnorm.kur.test(na.omit(df_sample_efa_rm))	 #p-value < 0.05
+mvnorm.skew.test(na.omit(df_sample_efa_rm))	 #p-value < 0.05
+#the p-values of the Henze-Zirkler test & the multivariate skewedness and kurtosis tests are all lower than 0.05, indicating violation of the multivariate normality assumption.	
+
+
+#determining how many factors to retain
+#check out the scree test and the Kaiser-Guttman criterion
+scree(df_correl_rm) #it suggests 2 factors
+
+#use parallel analysis for estimation
+fa.parallel(df_correl_rm, n.obs = nrow(df_sample_efa_rm), fa = "both", n.iter = 100, fm = "pa")  
+#parallel analysis suggests that the number of factors = 3 and the number of components = 2
+
+#The Very Simple Structure (VSS) criterion and Wayne Velicer's Minimum Average Partial (MAP) criterion
+nfactors(df_correl_rm, n.obs = nrow(df_sample_efa_rm))	  #VSS and MAP both suggest 2 factors
+
+#Factor extraction without rotation
+efa_rm <- fa(df_sample_efa_rm, nfactors = 3, rotate = "none", fm = "pa")
+efa_rm 
+
+# Sorted communality 
+efa_common_rm <- as.data.frame(sort(efa_rm$communality, decreasing = TRUE))	
+efa_common_rm 	# AT_item1 is the best represented item in the 3-factor structure, with 80.66% of its total variance explained by the new factors.
+
+mean(efa_rm$communality)	   #0.69
+
+
+#Factor extraction with rotation 
+efa_oblimin_rm <- fa(df_sample_efa_rm, nfactors = 3, rotate = "oblimin", fm = "pa")
+efa_oblimin_rm   # 3 factor structure explained 34% variance of 13 items
+#the lowest correlation between factors is 0.41, which exceeds the Tabachnick and Fiddell threshold of .32
+
+
+# Sorted communality 
+efa_oblimin_common_rm <- as.data.frame(sort(efa_oblimin_rm$communality, decreasing = TRUE))	
+efa_oblimin_common_rm 	# 80.66%	
+
+mean(efa_oblimin_rm$communality)	   #0.69
+
+
+efa_oblimin_rm$loadings
+print(efa_oblimin_rm$loadings, cutoff = 0.45)
+#The value 0.32 is handy because we can interpret its squared value, 0.1024, as the minimum proportion of variance (i.e., 10%) in the observed variable (subtests) we wish to consider to be salient enough for consideration (Tabachnick & Fidell, 2007).
+	
+```
+
+
+#===================================================================================#
+##### PLS-SEM #####
+
+
+### Confirmatory Composite Analysis (measurement models)
+```{r}
+# Load packages
+library(seminr)
+
+df_sample_pls <- df_sample %>%
+  dplyr::select(AT_item1,
+         AT_item2,
+         AT_item3,
+         AT_item4,
+         AT_item5,
+         SN_item1,
+         SN_item2,
+         SN_item3,
+         SN_item5,
+         PBC_item1,
+         PBC_item2,
+         PBC_item3,
+         toxic_ot_dummy,
+         moderate_ot_dummy,
+         INT) %>%
+  mutate(SN_item4 = as.numeric(SN_item5)) %>%
+  dplyr::select(-SN_item5)
+view(df_sample_pls)
+
+#create measurement model
+measurements <- constructs(
+  composite("AT", multi_items("AT_item", 1:5)),
+  composite("SN", multi_items("SN_item", 1:4)),
+  composite("PBC", multi_items("PBC_item", 1:3)),
+  composite("FI", single_item("INT")),
+  composite("Tox_ot", single_item("toxic_ot_dummy")),
+  composite("Mod_ot", single_item("moderate_ot_dummy"))
+)
+
+#create structural model
+structure <- relationships(
+  paths(from = c("AT", "SN", "PBC"), to = "FI"),
+  paths(from = c("Tox_ot", "Mod_ot"), to = c("AT", "SN", "PBC", "FI"))
+)
+
+#estimate the model
+pls_model1 <- estimate_pls(
+  data = df_sample_pls,
+  measurement_model = measurements,
+  structural_model = structure
+)
+
+#summarize the model results
+summary_model1 <- summary(pls_model1)
+
+summary_model1$descriptives$statistics # no missing values
+summary_model1$iterations # the algorithm converged after iteration 3, which is lower than 300 (the default setting)
+
+#inspect the outer loadings
+summary_model1$loadings #all indicator loadings of the reflectively measured constructs are well above the threshold value of 0.708
+#inspect the indicator reliability
+summary_model1$loadings^2 #the indicator SN_item4 which is the old SN_item5 has the smallest indicator-explained variance with a value of 0.514, which is well above the threshold value of 0.5
+
+#inspect the internal consistency and reliability
+summary_model1$reliability. #alpha, rhoc, and rhoa all exceed 0.7; AVE exceed 0.5
+#plot the reliabilities of constructs
+plot(summary_model1$reliability)
+
+
+#table of the htmt (for checking discriminant validity)
+summary_model1$validity$htmt
+
+boot_pls_model1 <- bootstrap_model(seminr_model = pls_model1, nboot = 10000, seed = 123)
+summary_boot_model1 <- summary(boot_pls_model1, alpha = 0.10)
+#extract the bootstrapped HTMT
+summary_boot_model1$bootstrapped_HTMT
+
+```
+
+
+### Structural model examination
+```{r}
+#create measurement model
+measurements <- constructs(
+  composite("AT", multi_items("AT_item", 1:5)),
+  composite("SN", multi_items("SN_item", 1:4)),
+  composite("PBC", multi_items("PBC_item", 1:3)),
+  composite("FI", single_item("INT")),
+  composite("Tox_ot", single_item("toxic_ot_dummy")),
+  composite("Mod_ot", single_item("moderate_ot_dummy"))
+)
+
+#create structural model
+structure <- relationships(
+  paths(from = c("AT", "SN", "PBC"), to = "FI"),
+  paths(from = c("Tox_ot", "Mod_ot"), to = c("AT", "SN", "PBC", "FI"))
+)
+
+#estimate the model
+pls_model1 <- estimate_pls(
+  data = df_sample_pls,
+  measurement_model = measurements,
+  structural_model = structure
+)
+
+#summarize the model results
+summary_model1 <- summary(pls_model1)
+
+#bootstrap the model
+boot_pls_model1 <- bootstrap_model(seminr_model = pls_model1, nboot = 10000, cores = parallel::detectCores(), seed = 123)
+summary_boot_model1 <- summary(boot_pls_model1, alpha = 0.05)
+
+
+#inspect the structural model collinearity VIF
+summary_model1$vif_antecedents
+
+#inspect the model RSquares
+summary_model1$paths
+#inspect the effect sizes
+summary_model1$fSquare
+
+
+#inspect the structural paths
+summary_boot_model1$bootstrapped_paths
+
+#inspect the total effects
+summary_boot_model1$bootstrapped_total_paths
+
+#visualize result
+plot(boot_pls_model1, title = "Bootstrapped Model")
+save_plot("myfigure.pdf")
+
+
+thm <- seminr_theme_create(plot.rounding = 2, plot.adj = FALSE,
+                           sm.node.fill = "cadetblue1",
+                           mm.node.fill = "lightgray")
+seminr_theme_set(thm)
+
+plot(boot_pls_model1, title = "Bootstrapped Model")
+save_plot("myfigure1.pdf")
+
+
+```
+
+
+
+### Mediation Analysis
+```{r}
+
+#Inspect total indirect effects
+summary_model1$total_indirect_effects
+
+#Inspect significance of indirect effects
+specific_effect_significance(boot_pls_model1,
+                             from = "Tox_ot",
+                             through = "AT",
+                             to = "FI",
+                             alpha = 0.05)
+specific_effect_significance(boot_pls_model1,
+                             from = "Tox_ot",
+                             through = "SN",
+                             to = "FI",
+                             alpha = 0.05)
+specific_effect_significance(boot_pls_model1,
+                             from = "Tox_ot",
+                             through = "PBC",
+                             to = "FI",
+                             alpha = 0.05)
+
+
+specific_effect_significance(boot_pls_model1,
+                             from = "Mod_ot",
+                             through = "AT",
+                             to = "FI",
+                             alpha = 0.05)
+
+specific_effect_significance(boot_pls_model1,
+                             from = "Mod_ot",
+                             through = "SN",
+                             to = "FI",
+                             alpha = 0.05)
+
+specific_effect_significance(boot_pls_model1,
+                             from = "Mod_ot",
+                             through = "PBC",
+                             to = "FI",
+                             alpha = 0.05)
+
+
+
+
+#inspect the direct effects
+summary_model1$paths
+
+#inspect the confidence intervals for direct effects
+summary_boot_model1$bootstrapped_paths
+
+```
+
+
+
+
+### Moderation Analysis (PBC as the moderator)
+```{r}
+#create measurement model
+measurements_mo <- constructs(
+  composite("AT", multi_items("AT_item", 1:5)),
+  composite("SN", multi_items("SN_item", 1:4)),
+  composite("PBC", multi_items("PBC_item", 1:3)),
+  composite("FI", single_item("INT")),
+  composite("Tox_ot", single_item("toxic_ot_dummy")),
+  composite("Mod_ot", single_item("moderate_ot_dummy")),
+  interaction_term(iv = "AT", moderator = "PBC", method = two_stage),
+  interaction_term(iv = "SN", moderator = "PBC", method = two_stage)
+)
+
+#create structural model
+structure_mo <- relationships(
+  paths(from = c("AT", "SN", "PBC", "AT*PBC", "SN*PBC"), to = "FI"),
+  paths(from = c("Tox_ot", "Mod_ot"), to = c("AT", "SN", "PBC", "FI"))
+)
+
+
+
+#estimate the model
+pls_model2 <- estimate_pls(
+  data = df_sample_pls,
+  measurement_model = measurements_mo,
+  structural_model = structure_mo
+)
+
+#summarize the model results
+summary_model2 <- summary(pls_model2)
+
+#bootstrap the model
+boot_pls_model2 <- bootstrap_model(seminr_model = pls_model2, nboot = 10000, seed = 123)
+summary_boot_model2 <- summary(boot_pls_model2, alpha = 0.05)
+
+#Inspect the bootstrapped structural paths
+summary_boot_model2$bootstrapped_paths
+
+#Simple slope analysis plot
+slope_analysis(
+  moderated_model = pls_model2,
+  dv = "FI",
+  moderator = "PBC",
+  iv = "AT",
+  leg_place = "bottomright"
+)
+
+plot(boot_pls_model2, title = "Bootstrapped Model")
+save_plot("myfigure2.pdf")
+
+
+```
+
